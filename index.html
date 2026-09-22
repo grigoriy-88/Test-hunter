@@ -803,16 +803,12 @@ async function shareResult(fromBonus) {
     `Верных ответов: ${r.score} из ${r.total}\n\n` +
     `Сможешь лучше? Проверь себя 👉 ${APP_LINK}`;
 
-  try {
-    if (state.vkReady) {
-      await vkSend('VKWebAppShowWallPostBox', {
-        message: text,
-        attachments: APP_LINK
-      });
-    } else {
-      const url = `https://vk.com/share.php?url=${encodeURIComponent(APP_LINK)}&title=${encodeURIComponent('Тест на знание охотминимума')}&comment=${encodeURIComponent(text)}`;
-      window.open(url, '_blank');
-    }
+  // Если VK недоступен — используем веб-шаринг
+  if (!state.vkReady) {
+    const url = `https://vk.com/share.php?url=${encodeURIComponent(APP_LINK)}` +
+      `&title=${encodeURIComponent('Тест на знание охотминимума')}` +
+      `&comment=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
     if (fromBonus && !state.bonus.share) {
       state.bonus.share = 1;
       await saveState();
@@ -821,9 +817,38 @@ async function shareResult(fromBonus) {
       renderStart();
       toast('Спасибо за репост! +1 попытка');
     }
+    return;
+  }
+
+  // В VK: показываем окно публикации. Таймаут 0 = ждём пользователя.
+  try {
+    await vkSend('VKWebAppShowWallPostBox', {
+      message: text
+    }, 0);
+
+    if (!state.bonus.share) {
+      state.bonus.share = 1;
+      await saveState();
+      renderBonus();
+      renderResultAttempts();
+      renderStart();
+      toast(fromBonus ? 'Спасибо за репост! +1 попытка' : 'Опубликовано!');
+    } else {
+      toast('Опубликовано!');
+    }
   } catch (e) {
-    console.log('[Share] error', e);
-    toast('Публикация отменена');
+    console.log('[Share] error:', e);
+    // Пользователь закрыл окно — это не ошибка, не ругаемся
+    if (e && (e.error_code === 4 || /cancel|denied/i.test(e.error_msg || e.message || ''))) {
+      toast('Публикация отменена');
+    } else {
+      // Реальная ошибка ВК — даём запасной способ
+      toast('Пробуем другой способ…');
+      const url = `https://vk.com/share.php?url=${encodeURIComponent(APP_LINK)}` +
+        `&title=${encodeURIComponent('Тест на знание охотминимума')}` +
+        `&comment=${encodeURIComponent(text)}`;
+      window.open(url, '_blank');
+    }
   }
 }
 
