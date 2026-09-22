@@ -418,14 +418,17 @@ function loadVKBridge() {
   });
 }
 
-// Вызов VK API с таймаутом, чтобы не «зависать» вне ВКонтакте
-async function vkSend(method, params) {
+// Вызов VK API с настраиваемым таймаутом
+async function vkSend(method, params, timeoutMs = VK_TIMEOUT) {
   if (!state.vkReady || typeof window.vkBridge === 'undefined') {
     throw new Error('VK Bridge недоступен');
   }
+  const promise = window.vkBridge.send(method, params);
+  // timeoutMs = 0 → ждём без ограничения (для интерактивных окон ВК)
+  if (!timeoutMs) return promise;
   return Promise.race([
-    window.vkBridge.send(method, params),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('VK timeout')), VK_TIMEOUT))
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('VK_TIMEOUT')), timeoutMs))
   ]);
 }
 
