@@ -396,10 +396,67 @@ const state = {
   score: 0,
   answered: false,
   bonus: { join: 0, fav: 0, msg: 0, share: 0 },
+  dailyBonus: 0,          // ← добавили: накопленные ежедневные бонусы
+  lastDay: null,          // ← добавили: дата последнего начисления (YYYY-MM-DD)
   used: 0,
   vkReady: false,
   lastResult: null
 };
+
+ async function saveState() {
+  const data = {
+    om_used:     String(state.used),
+    om_b_join:   String(state.bonus.join),
+    om_b_fav:    String(state.bonus.fav),
+    om_b_msg:    String(state.bonus.msg),
+    om_b_share:  String(state.bonus.share),
+    om_daily:    String(state.dailyBonus),
+    om_last_day: state.lastDay || ''
+  };
+  async function applyDailyBonus() {
+  const today = getLocalDate();
+  const lastDay = state.lastDay;
+
+  // Первый запуск вообще — просто запоминаем сегодняшнюю дату, бонус не даём
+  if (!lastDay) {
+    state.lastDay = today;
+    await saveState();
+    return;
+  }
+
+  // Сегодня уже заходили — ничего не делаем
+  if (lastDay === today) return;
+
+  // Наступил новый день. Смотрим, сколько попыток осталось
+  const leftBefore = attemptsLeft();
+
+  if (leftBefore === 0) {
+    state.dailyBonus += 2;
+    toast('🌅 Ежедневный бонус: +2 попытки!');
+  }
+
+  state.lastDay = today;
+  await saveState();
+}
+
+  // Пишем в VK Storage (если доступен)
+  if (state.vkReady) {
+    try {
+      for (const key of Object.keys(data)) {
+        await vkSend('VKWebAppStorageSet', { key, value: data[key] });
+      }
+    } catch (e) {
+      console.log('[Storage] VK set error', e);
+    }
+  }
+
+  // Дублируем в localStorage — кэш на случай, если VK Bridge недоступен
+  try {
+    for (const key of Object.keys(data)) {
+      localStorage.setItem(key, data[key]);
+    }
+  } catch (e) {}
+}
 
 /* ============================================================
    VK BRIDGE: динамическая загрузка с таймаутом
@@ -490,14 +547,23 @@ function toast(msg) {
   clearTimeout(t._to);
   t._to = setTimeout(() => t.classList.remove('show'), 2200);
 }
-function showScreen(id) {
+function getLocalDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function totalAttempts() {
-  return BASE_ATTEMPTS + state.bonus.join + state.bonus.fav + state.bonus.msg + state.bonus.share;
+  return BASE_ATTEMPTS
+    + state.bonus.join + state.bonus.fav + state.bonus.msg + state.bonus.share
+    + state.dailyBonus;
 }
 function attemptsLeft() {
   return Math.max(0, totalAttempts() - state.used);
@@ -508,26 +574,31 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+
 /* ============================================================
    ЗАГРУЗКА / СОХРАНЕНИЕ
    ============================================================ */
 async function loadState() {
-  // 1. Читаем из VK Storage (если Bridge доступен)
+  // Переменные для данных из VK Storage
   let vkUsed = 0;
+  let vkDaily = 0;
   const vkBonus = { join: 0, fav: 0, msg: 0, share: 0 };
 
+  // 1. Читаем из VK Storage (если Bridge доступен)
   if (state.vkReady) {
     try {
       const res = await vkSend('VKWebAppStorageGet', {
-        keys: ['om_used', 'om_b_join', 'om_b_fav', 'om_b_msg', 'om_b_share']
+        keys: ['om_used', 'om_b_join', 'om_b_fav', 'om_b_msg', 'om_b_share', 'om_daily', 'om_last_day']
       });
       (res.keys || []).forEach(item => {
         const val = parseInt(item.value || '0', 10) || 0;
-        if (item.key === 'om_used')    vkUsed       = val;
-        if (item.key === 'om_b_join')  vkBonus.join = val;
-        if (item.key === 'om_b_fav')   vkBonus.fav  = val;
-        if (item.key === 'om_b_msg')   vkBonus.msg  = val;
-        if (item.key === 'om_b_share') vkBonus.share= val;
+        if (item.key === 'om_used')     vkUsed          = val;
+        if (item.key === 'om_b_join')   vkBonus.join    = val;
+        if (item.key === 'om_b_fav')    vkBonus.fav     = val;
+        if (item.key === 'om_b_msg')    vkBonus.msg     = val;
+        if (item.key === 'om_b_share')  vkBonus.share   = val;
+        if (item.key === 'om_daily')    vkDaily         = val;
+        if (item.key === 'om_last_day') state.lastDay   = item.value || null;
       });
     } catch (e) {
       console.log('[Storage] VK get error', e);
@@ -536,6 +607,8 @@ async function loadState() {
 
   // 2. Читаем из localStorage (fallback / кэш)
   const lsUsed = parseInt(localStorage.getItem('om_used') || '0', 10) || 0;
+  const lsDaily = parseInt(localStorage.getItem('om_daily') || '0', 10) || 0;
+  const lsLastDay = localStorage.getItem('om_last_day') || null;
   const lsBonus = {
     join:  parseInt(localStorage.getItem('om_b_join')  || '0', 10) || 0,
     fav:   parseInt(localStorage.getItem('om_b_fav')   || '0', 10) || 0,
@@ -544,45 +617,19 @@ async function loadState() {
   };
 
   // 3. Синхронизация: берём максимум, чтобы не потерять прогресс
-  //    ни из VK Storage, ни из localStorage.
   state.used        = Math.max(vkUsed, lsUsed);
+  state.dailyBonus  = Math.max(vkDaily, lsDaily);
   state.bonus.join  = Math.max(vkBonus.join,  lsBonus.join);
   state.bonus.fav   = Math.max(vkBonus.fav,   lsBonus.fav);
   state.bonus.msg   = Math.max(vkBonus.msg,   lsBonus.msg);
   state.bonus.share = Math.max(vkBonus.share, lsBonus.share);
 
+  if (!state.lastDay) state.lastDay = lsLastDay;
+
   // 4. Если VK доступен — записываем синхронизированные данные обратно
   if (state.vkReady) {
     await saveState();
   }
-}
-
-async function saveState() {
-  const data = {
-    om_used:    String(state.used),
-    om_b_join:  String(state.bonus.join),
-    om_b_fav:   String(state.bonus.fav),
-    om_b_msg:   String(state.bonus.msg),
-    om_b_share: String(state.bonus.share)
-  };
-
-  // Пишем в VK Storage (если доступен)
-  if (state.vkReady) {
-    try {
-      for (const key of Object.keys(data)) {
-        await vkSend('VKWebAppStorageSet', { key, value: data[key] });
-      }
-    } catch (e) {
-      console.log('[Storage] VK set error', e);
-    }
-  }
-
-  // Дублируем в localStorage — кэш на случай, если VK Bridge недоступен
-  try {
-    for (const key of Object.keys(data)) {
-      localStorage.setItem(key, data[key]);
-    }
-  } catch (e) {}
 }
 
 /* ============================================================
@@ -594,8 +641,9 @@ async function init() {
   } catch (e) {
     console.error('initVK error', e);
   }
-  try {
+      try {
     await loadState();
+    await applyDailyBonus();
   } catch (e) {
     console.error('loadState error', e);
   }
