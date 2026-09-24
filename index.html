@@ -413,11 +413,31 @@ const state = {
     om_daily:    String(state.dailyBonus),
     om_last_day: state.lastDay || ''
   };
-  async function applyDailyBonus() {
+
+  // Пишем в VK Storage (если доступен)
+  if (state.vkReady) {
+    try {
+      for (const key of Object.keys(data)) {
+        await vkSend('VKWebAppStorageSet', { key, value: data[key] });
+      }
+    } catch (e) {
+      console.log('[Storage] VK set error', e);
+    }
+  }
+
+  // Дублируем в localStorage — кэш
+  try {
+    for (const key of Object.keys(data)) {
+      localStorage.setItem(key, data[key]);
+    }
+  } catch (e) {}
+}
+
+async function applyDailyBonus() {
   const today = getLocalDate();
   const lastDay = state.lastDay;
 
-  // Первый запуск вообще — просто запоминаем сегодняшнюю дату, бонус не даём
+  // Первый запуск — просто запоминаем дату, бонус не даём
   if (!lastDay) {
     state.lastDay = today;
     await saveState();
@@ -437,25 +457,6 @@ const state = {
 
   state.lastDay = today;
   await saveState();
-}
-
-  // Пишем в VK Storage (если доступен)
-  if (state.vkReady) {
-    try {
-      for (const key of Object.keys(data)) {
-        await vkSend('VKWebAppStorageSet', { key, value: data[key] });
-      }
-    } catch (e) {
-      console.log('[Storage] VK set error', e);
-    }
-  }
-
-  // Дублируем в localStorage — кэш на случай, если VK Bridge недоступен
-  try {
-    for (const key of Object.keys(data)) {
-      localStorage.setItem(key, data[key]);
-    }
-  } catch (e) {}
 }
 
 /* ============================================================
