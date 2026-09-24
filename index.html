@@ -512,18 +512,77 @@ function escapeHtml(s) {
    ЗАГРУЗКА / СОХРАНЕНИЕ
    ============================================================ */
 async function loadState() {
-  state.used      = parseInt(await storageGet('om_used')    || '0', 10) || 0;
-  state.bonus.join  = parseInt(await storageGet('om_b_join')  || '0', 10) || 0;
-  state.bonus.fav   = parseInt(await storageGet('om_b_fav')   || '0', 10) || 0;
-  state.bonus.msg   = parseInt(await storageGet('om_b_msg')   || '0', 10) || 0;
-  state.bonus.share = parseInt(await storageGet('om_b_share') || '0', 10) || 0;
+  // 1. Читаем из VK Storage (если Bridge доступен)
+  let vkUsed = 0;
+  const vkBonus = { join: 0, fav: 0, msg: 0, share: 0 };
+
+  if (state.vkReady) {
+    try {
+      const res = await vkSend('VKWebAppStorageGet', {
+        keys: ['om_used', 'om_b_join', 'om_b_fav', 'om_b_msg', 'om_b_share']
+      });
+      (res.keys || []).forEach(item => {
+        const val = parseInt(item.value || '0', 10) || 0;
+        if (item.key === 'om_used')    vkUsed       = val;
+        if (item.key === 'om_b_join')  vkBonus.join = val;
+        if (item.key === 'om_b_fav')   vkBonus.fav  = val;
+        if (item.key === 'om_b_msg')   vkBonus.msg  = val;
+        if (item.key === 'om_b_share') vkBonus.share= val;
+      });
+    } catch (e) {
+      console.log('[Storage] VK get error', e);
+    }
+  }
+
+  // 2. Читаем из localStorage (fallback / кэш)
+  const lsUsed = parseInt(localStorage.getItem('om_used') || '0', 10) || 0;
+  const lsBonus = {
+    join:  parseInt(localStorage.getItem('om_b_join')  || '0', 10) || 0,
+    fav:   parseInt(localStorage.getItem('om_b_fav')   || '0', 10) || 0,
+    msg:   parseInt(localStorage.getItem('om_b_msg')   || '0', 10) || 0,
+    share: parseInt(localStorage.getItem('om_b_share') || '0', 10) || 0
+  };
+
+  // 3. Синхронизация: берём максимум, чтобы не потерять прогресс
+  //    ни из VK Storage, ни из localStorage.
+  state.used        = Math.max(vkUsed, lsUsed);
+  state.bonus.join  = Math.max(vkBonus.join,  lsBonus.join);
+  state.bonus.fav   = Math.max(vkBonus.fav,   lsBonus.fav);
+  state.bonus.msg   = Math.max(vkBonus.msg,   lsBonus.msg);
+  state.bonus.share = Math.max(vkBonus.share, lsBonus.share);
+
+  // 4. Если VK доступен — записываем синхронизированные данные обратно
+  if (state.vkReady) {
+    await saveState();
+  }
 }
+
 async function saveState() {
-  await storageSet('om_used', state.used);
-  await storageSet('om_b_join',  state.bonus.join);
-  await storageSet('om_b_fav',   state.bonus.fav);
-  await storageSet('om_b_msg',   state.bonus.msg);
-  await storageSet('om_b_share', state.bonus.share);
+  const data = {
+    om_used:    String(state.used),
+    om_b_join:  String(state.bonus.join),
+    om_b_fav:   String(state.bonus.fav),
+    om_b_msg:   String(state.bonus.msg),
+    om_b_share: String(state.bonus.share)
+  };
+
+  // Пишем в VK Storage (если доступен)
+  if (state.vkReady) {
+    try {
+      for (const key of Object.keys(data)) {
+        await vkSend('VKWebAppStorageSet', { key, value: data[key] });
+      }
+    } catch (e) {
+      console.log('[Storage] VK set error', e);
+    }
+  }
+
+  // Дублируем в localStorage — кэш на случай, если VK Bridge недоступен
+  try {
+    for (const key of Object.keys(data)) {
+      localStorage.setItem(key, data[key]);
+    }
+  } catch (e) {}
 }
 
 /* ============================================================
@@ -793,61 +852,70 @@ async function handleBonus(key) {
 }
 
 /* ============================================================
-   ШАРИНГ
+   ШАРИНГ (публикация истории ВК)
    ============================================================ */
+
+// Фон истории. Загрузите свою картинку (1080×1920) на любой хостинг
+// и подставьте ссылку. Пока можно оставить как есть — там нейтральный фон.
+const STORY_BG_URL = 'https://sun9-1.userapi.com/impg/placeholder-bg.jpg';
+
 async function shareResult(fromBonus) {
   const r = state.lastResult || { pct: 0, rank: '—', score: 0, total: 0 };
-  const text =
-    `🦌 Я прошёл тест на знание охотминимума!\n` +
-    `Мой результат: ${r.pct}% — ${r.rank}\n` +
-    `Верных ответов: ${r.score} из ${r.total}\n\n` +
-    `Сможешь лучше? Проверь себя 👉 ${APP_LINK}`;
 
-  // Если VK недоступен — используем веб-шаринг
+  // Формируем текст, который попадёт на стикер истории
+  const storyText =
+    `🦌 Охотминимум: ${r.pct}%\n` +
+    `${r.rank}\n` +
+    `${r.score}/${r.total} верных`;
+
+  // Если VK Bridge недоступен — показываем подсказку
   if (!state.vkReady) {
-    const url = `https://vk.com/share.php?url=${encodeURIComponent(APP_LINK)}` +
-      `&title=${encodeURIComponent('Тест на знание охотминимума')}` +
-      `&comment=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
-    if (fromBonus && !state.bonus.share) {
-      state.bonus.share = 1;
-      await saveState();
-      renderBonus();
-      renderResultAttempts();
-      renderStart();
-      toast('Спасибо за репост! +1 попытка');
-    }
+    toast('Открой приложение ВКонтакте, чтобы поделиться 📣');
     return;
   }
 
-  // В VK: показываем окно публикации. Таймаут 0 = ждём пользователя.
   try {
-    await vkSend('VKWebAppShowWallPostBox', {
-      message: text
+    // VKWebAppShowStoryBox — публикация истории.
+    // timeoutMs = 0 → ждём, пока пользователь сам опубликует или закроет.
+    await vkSend('VKWebAppShowStoryBox', {
+      background_type: 'image',
+      url: STORY_BG_URL,
+      attachment: {
+        text: 'Проверь себя 👉',
+        type: 'url',
+        url: APP_LINK
+      },
+      stickers: [
+        {
+          sticker_type: 'native',
+          sticker: {
+            content_type: 'image',
+            url: STORY_BG_URL
+          }
+        }
+      ]
     }, 0);
 
+    // Промис разрешился — история опубликована
     if (!state.bonus.share) {
       state.bonus.share = 1;
       await saveState();
       renderBonus();
       renderResultAttempts();
       renderStart();
-      toast(fromBonus ? 'Спасибо за репост! +1 попытка' : 'Опубликовано!');
+      toast(fromBonus ? 'Спасибо за историю! +1 попытка' : 'История опубликована!');
     } else {
-      toast('Опубликовано!');
+      toast('История опубликована!');
     }
   } catch (e) {
-    console.log('[Share] error:', e);
-    // Пользователь закрыл окно — это не ошибка, не ругаемся
-    if (e && (e.error_code === 4 || /cancel|denied/i.test(e.error_msg || e.message || ''))) {
+    console.log('[Story] error:', e);
+    const msg = (e && (e.error_msg || e.message)) || '';
+    if (/cancel|denied/i.test(msg) || (e && e.error_code === 4)) {
       toast('Публикация отменена');
+    } else if (e && e.error_code === 15) {
+      toast('Разрешите публикацию историй в настройках ВК');
     } else {
-      // Реальная ошибка ВК — даём запасной способ
-      toast('Пробуем другой способ…');
-      const url = `https://vk.com/share.php?url=${encodeURIComponent(APP_LINK)}` +
-        `&title=${encodeURIComponent('Тест на знание охотминимума')}` +
-        `&comment=${encodeURIComponent(text)}`;
-      window.open(url, '_blank');
+      toast('Не удалось открыть редактор историй');
     }
   }
 }
