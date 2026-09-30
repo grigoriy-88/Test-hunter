@@ -947,23 +947,14 @@ async function shareResult(fromBonus) {
   try {
     // VKWebAppShowStoryBox — публикация истории.
     // timeoutMs = 0 → ждём, пока пользователь сам опубликует или закроет.
-    await vkSend('VKWebAppShowStoryBox', {
+        await vkSend('VKWebAppShowStoryBox', {
       background_type: 'image',
-      url: STORY_BG_URL,
+      url: 'https://sun9-65.userapi.com/c850136/v850136098/1b77eb/0YK6suXkY24.jpg',
       attachment: {
         text: 'Проверь себя 👉',
         type: 'url',
         url: APP_LINK
-      },
-      stickers: [
-        {
-          sticker_type: 'native',
-          sticker: {
-            content_type: 'image',
-            url: STORY_BG_URL
-          }
-        }
-      ]
+      }
     }, 0);
 
     // Промис разрешился — история опубликована
@@ -978,7 +969,7 @@ async function shareResult(fromBonus) {
       toast('История опубликована!');
     }
   } catch (e) {
-    console.log('[Story] error:', e);
+        console.log('[Story] error:', JSON.stringify(e, null, 2));
     const msg = (e && (e.error_msg || e.message)) || '';
     if (/cancel|denied/i.test(msg) || (e && e.error_code === 4)) {
       toast('Публикация отменена');
