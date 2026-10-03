@@ -927,44 +927,45 @@ async function handleBonus(key) {
 
 // Фон истории. Загрузите свою картинку (1080×1920) на любой хостинг
 // и подставьте ссылку. Пока можно оставить как есть — там нейтральный фон.
-const STORY_BG_URL = 'https://sun9-1.userapi.com/impg/placeholder-bg.jpg';
+const STORY_BG_URL = 'https://img.magnific.com/free-vector/green-background-with-grainy-texture-background_474888-5940.jpg?semt=ais_hybrid&w=740&q=80';
 
 async function shareResult(fromBonus) {
   const r = state.lastResult || { pct: 0, rank: '—', score: 0, total: 0 };
 
-  // Формируем текст, который попадёт на стикер истории
+  // Текст стикера с результатом
   const storyText =
     `🦌 Охотминимум: ${r.pct}%\n` +
     `${r.rank}\n` +
     `${r.score}/${r.total} верных`;
 
-  // Если VK Bridge недоступен — показываем подсказку
   if (!state.vkReady) {
     toast('Открой приложение ВКонтакте, чтобы поделиться 📣');
     return;
   }
 
   try {
-    // VKWebAppShowStoryBox — публикация истории.
-    // timeoutMs = 0 → ждём, пока пользователь сам опубликует или закроет.
-        await vkSend('VKWebAppShowStoryBox', {
-  background_type: 'image',
-  url: STORY_BG_URL,   // ← вернули свой охотничий фон
-  attachment: {
-    text: 'Проверь себя 👉',
-    type: 'url',
-    url: APP_LINK
-  },
-  stickers: [
-    {
-      sticker_type: 'native',
-      sticker: {
-        content_type: 'text',
-        text: `🦌 Охотминимум: ${r.pct}%\n${r.rank}\n${r.score}/${r.total} верных`
-      }
-    }
-  ]
-}, 0);
+    await vkSend('VKWebAppShowStoryBox', {
+      background_type: 'image',
+      url: STORY_BG_URL,
+      attachment: {
+        text: 'Проверь себя 👉',
+        type: 'url',
+        url: APP_LINK
+      },
+      stickers: [
+        {
+          sticker_type: 'native',
+          sticker: {
+            action_type: 'text',
+            action: {
+              text: storyText,
+              style: 'classic',
+              background_style: 'solid'
+            }
+          }
+        }
+      ]
+    }, 0);
 
     // Промис разрешился — история опубликована
     if (!state.bonus.share) {
@@ -978,7 +979,7 @@ async function shareResult(fromBonus) {
       toast('История опубликована!');
     }
   } catch (e) {
-        console.log('[Story] error:', JSON.stringify(e, null, 2));
+    console.log('[Story] error:', JSON.stringify(e, null, 2));
     const msg = (e && (e.error_msg || e.message)) || '';
     if (/cancel|denied/i.test(msg) || (e && e.error_code === 4)) {
       toast('Публикация отменена');
