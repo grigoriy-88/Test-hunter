@@ -928,15 +928,28 @@ async function handleBonus(key) {
 // Фон истории. Загрузите свою картинку (1080×1920) на любой хостинг
 // и подставьте ссылку. Пока можно оставить как есть — там нейтральный фон.
 const STORY_BG_URL = 'https://img.magnific.com/free-vector/green-background-with-grainy-texture-background_474888-5940.jpg?semt=ais_hybrid&w=740&q=80';
+// Эмодзи по уровню результата
+function getRankEmoji(pct) {
+  if (pct >= 90) return '🏆';
+  if (pct >= 75) return '🦌';
+  if (pct >= 50) return '🎓';
+  return '🤡';
+}
 
+ 
 async function shareResult(fromBonus) {
   const r = state.lastResult || { pct: 0, rank: '—', score: 0, total: 0 };
 
   // Текст стикера с результатом
+    // Формируем текст, который попадёт на стикер истории
   const storyText =
-    `🦌 Охотминимум: ${r.pct}%\n` +
-    `${r.rank}\n` +
-    `${r.score}/${r.total} верных`;
+    `🎯 ТЕСТ НА ЗНАНИЕ ОХОТМИНИМУМА\n` +
+    `────────────────────\n` +
+    `${getRankEmoji(r.pct)} ${r.rank}\n` +
+    `Результат: ${r.pct}%\n` +
+    `${r.score} из ${r.total} верных ответов\n` +
+    `────────────────────\n` +
+    `#охотминимум #охота`;
 
   if (!state.vkReady) {
     toast('Открой приложение ВКонтакте, чтобы поделиться 📣');
@@ -947,8 +960,8 @@ async function shareResult(fromBonus) {
     await vkSend('VKWebAppShowStoryBox', {
       background_type: 'image',
       url: STORY_BG_URL,
-      attachment: {
-        text: 'Проверь себя 👉',
+            attachment: {
+        text: 'Пройти тест 👉',
         type: 'url',
         url: APP_LINK
       },
