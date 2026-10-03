@@ -948,14 +948,23 @@ async function shareResult(fromBonus) {
     // VKWebAppShowStoryBox — публикация истории.
     // timeoutMs = 0 → ждём, пока пользователь сам опубликует или закроет.
         await vkSend('VKWebAppShowStoryBox', {
-      background_type: 'image',
-      url: 'https://sun9-65.userapi.com/c850136/v850136098/1b77eb/0YK6suXkY24.jpg',
-      attachment: {
-        text: 'Проверь себя 👉',
-        type: 'url',
-        url: APP_LINK
+  background_type: 'image',
+  url: STORY_BG_URL,   // ← вернули свой охотничий фон
+  attachment: {
+    text: 'Проверь себя 👉',
+    type: 'url',
+    url: APP_LINK
+  },
+  stickers: [
+    {
+      sticker_type: 'native',
+      sticker: {
+        content_type: 'text',
+        text: `🦌 Охотминимум: ${r.pct}%\n${r.rank}\n${r.score}/${r.total} верных`
       }
-    }, 0);
+    }
+  ]
+}, 0);
 
     // Промис разрешился — история опубликована
     if (!state.bonus.share) {
