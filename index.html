@@ -286,7 +286,7 @@ const VK_PLATFORM = urlParams.get('vk_platform') || '';
 // Истории работают только на мобильных. Десктоп и iPad — не поддерживают.
 const CAN_SHOW_STORIES = /mobile_(iphone|android|web)/i.test(VK_PLATFORM);
  
-const BASE_ATTEMPTS = 20;
+const BASE_ATTEMPTS = 2;
 const QUESTIONS_PER_TEST = 20;
 const PASS_PERCENT = 75;
 const VK_TIMEOUT = 1500; // мс: если VK не ответил — работаем без него
