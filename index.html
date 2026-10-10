@@ -246,6 +246,9 @@
     </div>
 
     <button class="btn btn-vk" id="btn-share" type="button">📣 Поделиться результатом</button>
+<p id="share-hint" style="display:none;text-align:center;font-size:13px;color:#7a5a3a;margin:6px 0 0;">
+  Поделиться результатом можно в мобильном приложении ВКонтакте 📱
+</p>
 
     <div id="bonus-block">
       <div class="actions-title">🎁 Заработай дополнительные попытки:</div>
@@ -276,7 +279,13 @@
 const GROUP_ID = 228373135;
 const APP_ID   = 54784155;
 const APP_LINK = `https://vk.com/app${APP_ID}`;
-
+ 
+// Определяем платформу из URL, куда VK подставляет ?vk_platform=...
+const urlParams = new URLSearchParams(location.search);
+const VK_PLATFORM = urlParams.get('vk_platform') || '';
+// Истории работают только на мобильных. Десктоп и iPad — не поддерживают.
+const CAN_SHOW_STORIES = /mobile_(iphone|android|web)/i.test(VK_PLATFORM);
+ 
 const BASE_ATTEMPTS = 2;
 const QUESTIONS_PER_TEST = 20;
 const PASS_PERCENT = 75;
@@ -595,7 +604,24 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
-
+function updateJoinButtons() {
+  const subscribed = state.bonus.join === 1;
+  ['btn-join-1', 'btn-join-2'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    if (subscribed) {
+      btn.textContent = '✓ Вы подписаны';
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'default';
+    } else {
+      btn.textContent = 'Подписаться';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    }
+  });
+}
 
 /* ============================================================
    ЗАГРУЗКА / СОХРАНЕНИЕ
@@ -673,6 +699,7 @@ async function init() {
   // Привязываем события ДО рендера — чтобы кнопка точно работала
   bindEvents();
   renderStart();
+  updateJoinButtons();   // ← добавили
 
   const statusEl = document.getElementById('vk-status');
   if (statusEl) {
@@ -695,6 +722,7 @@ function renderStart() {
   } else {
     btn.disabled = false;
     btn.textContent = '🏹 Начать тест';
+   updateJoinButtons();
   }
 }
 
@@ -852,6 +880,16 @@ function renderResultAttempts() {
     btn.disabled = false;
     btn.textContent = '🔁 Пройти ещё раз';
   }
+   // Скрываем кнопку историй на платформах, где они не поддерживаются
+  const shareBtn = document.getElementById('btn-share');
+  const shareHint = document.getElementById('share-hint');
+  if (!CAN_SHOW_STORIES) {
+    shareBtn.style.display = 'none';
+    shareHint.style.display = 'block';
+  } else {
+    shareBtn.style.display = 'block';
+    shareHint.style.display = 'none';
+  }
 }
 
 /* ============================================================
@@ -915,6 +953,7 @@ async function handleBonus(key) {
     renderBonus();
     renderResultAttempts();
     renderStart();
+   updateJoinButtons();
   } catch (e) {
     console.log('[Bonus] error', e);
     toast('Действие отменено');
