@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+ <script src="./browser.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Тест на знание охотминимума</title>
@@ -495,14 +496,18 @@ async function applyDailyBonus() {
 function loadVKBridge() {
   return new Promise((resolve) => {
     if (typeof window.vkBridge !== 'undefined') return resolve(true);
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/@vkontakte/vk-bridge@2/dist/browser.min.js';
-    s.async = true;
-    s.onload = () => resolve(typeof window.vkBridge !== 'undefined');
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
-    // страховка: если CDN не ответил за 3 секунды — не блокируем приложение
-    setTimeout(() => resolve(typeof window.vkBridge !== 'undefined'), 3000);
+    
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      if (typeof window.vkBridge !== 'undefined') {
+        clearInterval(timer);
+        resolve(true);
+      } else if (tries >= 20) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 100);
   });
 }
 
